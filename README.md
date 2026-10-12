@@ -52,9 +52,9 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 
 ### Step 2 - Resource group + IoT Hub (Terraform)
 - [x] Hub already created with `az` (RG `rg-iot-poc`, SKU F1, 2 partitions) and device `sim-device-01` registered. These were created manually, before the IaC rule
-- [ ] Write `infra/` (`providers.tf`, `main.tf`, `variables.tf`, `outputs.tf`): `azurerm_resource_group`, `azurerm_iothub` (F1, or S1 if F1 is taken)
-- [ ] **Adopt the existing resources** with `terraform import` (or `import {}` blocks), then check `terraform plan` shows no diff. Alternative: delete the RG and let Terraform recreate it (asks for confirmation first)
-- [ ] Always run `terraform plan` and review it before `terraform apply`
+- [x] Write `infra/` (`providers.tf`, `main.tf`, `variables.tf`, `outputs.tf`): `azurerm_resource_group`, `azurerm_iothub` (F1, or S1 if F1 is taken)
+- [x] **Adopt the existing resources** with `terraform import` (or `import {}` blocks), then check `terraform plan` shows no diff. Alternative: delete the RG and let Terraform recreate it (asks for confirmation first)
+- [x] Always run `terraform plan` and review it before `terraform apply`
 
 *Why:* the hub is the central control + data plane. The SKU sets daily message quota and features (Basic lacks twins/methods/C2D; Standard has them all).
 
