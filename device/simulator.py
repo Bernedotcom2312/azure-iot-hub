@@ -7,6 +7,8 @@ import time
 from azure.iot.device import IoTHubDeviceClient, Message
 
 SEND_INTERVAL_S = 5
+# Routing property: 'storage' matches the cold-path route; any other value only reaches the built-in endpoint.
+MESSAGE_LEVEL_DEFAULT = "storage"
 
 
 def load_env(path: str = ".env") -> None:
@@ -24,8 +26,9 @@ def load_env(path: str = ".env") -> None:
 def main() -> None:
     load_env()
     client = IoTHubDeviceClient.create_from_connection_string(os.environ["DEVICE_CONNECTION_STRING"])
+    level = os.environ.get("MESSAGE_LEVEL", MESSAGE_LEVEL_DEFAULT)
     client.connect()  # MQTT over TLS (port 8883)
-    print("Connected. Ctrl+C to stop.")
+    print(f"Connected (level={level}). Ctrl+C to stop.")
     try:
         while True:
             payload = {
@@ -35,8 +38,8 @@ def main() -> None:
             msg = Message(json.dumps(payload))
             msg.content_type = "application/json"
             msg.content_encoding = "utf-8"
-            # Custom application property: usable later for message routing (step 4).
-            msg.custom_properties["level"] = "storage"
+            # Custom application property, evaluated by the route condition `level = 'storage'`.
+            msg.custom_properties["level"] = level
             client.send_message(msg)
             print(f"Sent: {payload}")
             time.sleep(SEND_INTERVAL_S)
