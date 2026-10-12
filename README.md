@@ -117,9 +117,10 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 *Why:* device identity and the service-side access path are the two main attack surfaces.
 
 ### Step 9 - Observability (Terraform)
-- [ ] `azurerm_log_analytics_workspace` + `azurerm_monitor_diagnostic_setting` on the hub (Connections, DeviceTelemetry, Routes categories)
-- [ ] `azurerm_monitor_metric_alert` / `azurerm_monitor_scheduled_query_rules_alert_v2`: throttling, failed connections, quota usage
-- [ ] KQL: devices with connection errors, message rate per device
+- [x] `azurerm_log_analytics_workspace` (shared with App Insights, 1 GB/day cap) + `azurerm_monitor_diagnostic_setting` on the hub (Connections, DeviceTelemetry, Routes, plus C2D/methods/twin categories, and AllMetrics) in `infra/observability.tf`
+- [x] Alerts into action group `ag-iot-poc-ops` (set `alert_email` to get emails): metric alerts on throttling (`d2c.telemetry.ingress.sendThrottle > 0`) and quota (`dailyMessageQuotaUsed > 80%`), log alert on failed connections (no metric exists for those)
+- [x] KQL as saved searches (Log Analytics > Logs > Queries > *IoT PoC*): devices with connection errors, connects/disconnects per device, message rate. Example:
+  `az monitor log-analytics query -w $(terraform -chdir=infra output -raw log_analytics_workspace_id) --analytics-query "AzureDiagnostics | where Category == 'Connections' | extend p = parse_json(properties_s) | project TimeGenerated, OperationName, Level, device = tostring(p.deviceId), ResultDescription" -o table`
 
 *Why:* most IoT incidents are connectivity/quota issues, visible only through hub metrics and logs.
 
@@ -160,3 +161,6 @@ Add findings, gotchas and cost observations here as the PoC progresses.
 - **`az iot dps enrollment-group create`** has no `--attestation-type`: omitting certificates means symmetric key; `--iot-hubs` requires `--allocation-policy`.
 - **X.509 CA auth:** the hub stores no device secret, only the CA certificate. Any device whose certificate chains to it and whose CN equals its device id can connect, but the device identity must still exist in the registry (or be created by DPS).
 - **DPS policy rights collapse:** DPS stores only `EnrollmentWrite` (it implies read and registration rights), so declaring the other flags in `azurerm_iothub_dps_shared_access_policy` causes a perpetual diff.
+- **Hub logs are failure-oriented:** apart from Connections (every connect/disconnect, e.g. `deviceConnect` + `IotHubUnauthorized` for a bad key), categories like DeviceTelemetry only log errors. There is no per-device message count in logs or metrics: per-device rates need the data itself (cold-path blobs, or a consumer writing to an analytics store). Metrics are hub-wide.
+- **IoT Hub logs only go to `AzureDiagnostics`** (no resource-specific tables); device details sit in the `properties_s` JSON column. Expect ~5 min ingestion latency for logs and metrics.
+- **Quota math:** S1 = 400k messages/day per unit (counted in 4 KB chunks), F1 = 8k. One simulator at 5 s sends 17,280/day, so it would exhaust F1 in about 11 hours.

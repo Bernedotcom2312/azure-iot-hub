@@ -51,3 +51,9 @@ variable "dps_name" {
   type        = string
   default     = "provs-iot-poc-121026"
 }
+
+variable "alert_email" {
+  description = "Optional email notified by Azure Monitor alerts (empty: alerts are only visible in the portal)."
+  type        = string
+  default     = ""
+}
