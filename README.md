@@ -86,9 +86,10 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 *Why:* shows the classic Lambda split: cold path (storage/analytics) vs hot path (near real-time reaction).
 
 ### Step 6 - Cloud-to-device control
-- [ ] Device handles a **direct method** `reboot`/`setInterval`; invoke with `az iot hub invoke-device-method`
-- [ ] Use the **device twin**: set `desired.sendInterval`, device applies it and writes `reported.sendInterval`; check with `az iot hub device-twin show`
-- [ ] Send a **C2D message** (`az iot device c2d-message send`)
+- [x] Device handles a **direct method** `reboot`/`setInterval`; invoke with `az iot hub invoke-device-method`
+- [x] Use the **device twin**: set `desired.sendInterval`, device applies it (also at startup, if set while offline) and writes `reported.sendInterval`; check with `az iot hub device-twin show`
+- [x] Send a **C2D message** (`az iot device c2d-message send`)
+- [x] All three in one go against a running simulator: `scripts/control-demo.sh`
 
 *Why:* the twin is the recommended way to manage config at scale; methods are for immediate commands; C2D for notifications. No new Azure resource here: this is all data-plane and device code.
 
@@ -143,3 +144,4 @@ Add findings, gotchas and cost observations here as the PoC progresses.
 - **Flex Consumption + identity-only storage (azurerm 4.x):** the provider always injects a key-based `AzureWebJobsStorage` app setting (empty key when shared keys are disabled), which overrides the identity-based settings and the host fails to start. `terraform_data.functions_fix_storage_setting` deletes it and re-syncs triggers after each change. Also use `AzureWebJobsStorage__blobServiceUri`, not `__accountName`: the Event Hubs checkpoint store rejects the latter. Its `zip_deploy_file` also failed (404), hence the separate deploy script.
 - **Scale to zero needs synced triggers:** a Flex app only wakes up for triggers registered with the scale controller; if trigger sync fails at deploy time, events pile up silently in Event Hubs.
 - **Python Functions bindings:** annotate batches with `typing.List[func.EventHubEvent]`; the worker rejects `list[...]` and indexes 0 functions.
+- **Respond before acting on a direct method:** the response travels on the device's MQTT connection, so a `reboot` must send its 200 before disconnecting, otherwise the caller gets a timeout (504) and the SDK handler crashes.
