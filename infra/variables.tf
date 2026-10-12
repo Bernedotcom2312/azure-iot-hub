@@ -45,3 +45,9 @@ variable "functions_storage_account_name" {
   type        = string
   default     = "stiotpocfn121026"
 }
+
+variable "dps_name" {
+  description = "Device Provisioning Service name, globally unique."
+  type        = string
+  default     = "provs-iot-poc-121026"
+}

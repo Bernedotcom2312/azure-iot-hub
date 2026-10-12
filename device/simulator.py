@@ -5,16 +5,20 @@ Control channels (all over the same MQTT connection):
 - device twin `desired.sendInterval` (desired state, applied even if set while offline)
 - C2D messages (fire-and-forget notifications, queued by the hub up to their TTL)
 """
+import base64
+import hashlib
+import hmac
 import json
 import os
 import random
 import threading
 
-from azure.iot.device import IoTHubDeviceClient, Message, MethodResponse
+from azure.iot.device import IoTHubDeviceClient, Message, MethodResponse, ProvisioningDeviceClient
 
 SEND_INTERVAL_DEFAULT_S = 5
 # Routing property: 'storage' matches the cold-path route; any other value only reaches the built-in endpoint.
 MESSAGE_LEVEL_DEFAULT = "storage"
+DPS_GLOBAL_ENDPOINT = "global.azure-devices-provisioning.net"
 
 
 def load_env(path: str = ".env") -> None:
@@ -109,9 +113,48 @@ class Device:
                 self.client.connect()
 
 
+def derive_device_key(group_key: str, registration_id: str) -> str:
+    """Group enrollment key derivation: HMAC-SHA256(group key, registration id).
+
+    In production this runs at the factory and only the derived key ships on the device;
+    the simulator derives it itself for convenience.
+    """
+    digest = hmac.new(base64.b64decode(group_key), registration_id.encode("utf-8"), hashlib.sha256).digest()
+    return base64.b64encode(digest).decode("utf-8")
+
+
+def provision_via_dps() -> IoTHubDeviceClient:
+    """Ask DPS which hub to use; DPS creates the device identity there on first registration."""
+    registration_id = os.environ["DPS_REGISTRATION_ID"]
+    if registration_id == os.environ.get("DPS_INDIVIDUAL_ID"):
+        key = os.environ["DPS_INDIVIDUAL_KEY"]
+    else:
+        key = derive_device_key(os.environ["DPS_GROUP_KEY"], registration_id)
+    provisioning = ProvisioningDeviceClient.create_from_symmetric_key(
+        provisioning_host=DPS_GLOBAL_ENDPOINT,
+        registration_id=registration_id,
+        id_scope=os.environ["DPS_ID_SCOPE"],
+        symmetric_key=key,
+    )
+    result = provisioning.register()
+    if result.status != "assigned":
+        raise RuntimeError(f"DPS registration failed: {result.status}")
+    state = result.registration_state
+    print(f"DPS assigned {state.device_id} to {state.assigned_hub}")
+    return IoTHubDeviceClient.create_from_symmetric_key(key, state.assigned_hub, state.device_id)
+
+
+def create_client() -> IoTHubDeviceClient:
+    """AUTH_MODE: connection_string (pre-registered device, Step 3) or dps (zero-touch, Step 7)."""
+    mode = os.environ.get("AUTH_MODE", "connection_string")
+    if mode == "dps":
+        return provision_via_dps()
+    return IoTHubDeviceClient.create_from_connection_string(os.environ["DEVICE_CONNECTION_STRING"])
+
+
 def main() -> None:
     load_env()
-    client = IoTHubDeviceClient.create_from_connection_string(os.environ["DEVICE_CONNECTION_STRING"])
+    client = create_client()
     device = Device(client, os.environ.get("MESSAGE_LEVEL", MESSAGE_LEVEL_DEFAULT))
     try:
         device.start()

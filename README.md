@@ -94,9 +94,9 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 *Why:* the twin is the recommended way to manage config at scale; methods are for immediate commands; C2D for notifications. No new Azure resource here: this is all data-plane and device code.
 
 ### Step 7 - Scale onboarding with DPS (Terraform)
-- [ ] `azurerm_iothub_dps` + `azurerm_iothub_dps_shared_access_policy`, linked to the hub
-- [ ] Create an individual enrollment, then a group enrollment (X.509 or symmetric-key group) via `az iot dps enrollment create` / `enrollment-group create` (data-plane, scripted)
-- [ ] Modify the simulator to provision itself via DPS instead of a hard-coded connection string
+- [x] `azurerm_iothub_dps` (S1, `Hashed` allocation) + `azurerm_iothub_dps_shared_access_policy`, linked to the hub through a dedicated hub policy `dps-link` (`infra/dps.tf`)
+- [x] Create an individual enrollment `sim-device-02`, then a symmetric-key group enrollment `sim-fleet` (with initial twin tags/properties) via `scripts/dps-enroll.sh` (data-plane; writes ID scope and keys to `.env`)
+- [x] Simulator provisions itself via DPS when `AUTH_MODE=dps`: `AUTH_MODE=dps DPS_REGISTRATION_ID=sim-fleet-001 uv run device/simulator.py` (any id works with the group: the device key is `HMAC-SHA256(group key, registration id)`)
 
 *Why:* in production you never pre-register thousands of devices manually; DPS assigns them to a hub on first boot (and can load-balance across hubs).
 
@@ -145,3 +145,6 @@ Add findings, gotchas and cost observations here as the PoC progresses.
 - **Scale to zero needs synced triggers:** a Flex app only wakes up for triggers registered with the scale controller; if trigger sync fails at deploy time, events pile up silently in Event Hubs.
 - **Python Functions bindings:** annotate batches with `typing.List[func.EventHubEvent]`; the worker rejects `list[...]` and indexes 0 functions.
 - **Respond before acting on a direct method:** the response travels on the device's MQTT connection, so a `reboot` must send its 200 before disconnecting, otherwise the caller gets a timeout (504) and the SDK handler crashes.
+- **DPS is only used at first boot (or re-provisioning):** it returns the assigned hub + device id, then the device talks to the hub directly. The ID scope is not a secret; the attestation (key or certificate) is.
+- **Group enrollment = initial config for free:** the initial twin of `sim-fleet` (`sendInterval: 10`, tag `fleet`) is applied to every device it provisions, so the device starts with the right config without any extra call.
+- **`az iot dps enrollment-group create`** has no `--attestation-type`: omitting certificates means symmetric key; `--iot-hubs` requires `--allocation-policy`.
