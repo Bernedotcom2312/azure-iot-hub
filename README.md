@@ -125,8 +125,11 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 *Why:* most IoT incidents are connectivity/quota issues, visible only through hub metrics and logs.
 
 ### Step 10 - Cleanup
-- [ ] `terraform destroy` (review the plan first); this removes `rg-iot-poc` and everything in it
+- [x] `scripts/cleanup.sh` written: shows `terraform plan -destroy`, asks for confirmation, applies it, removes local certs (`--with-state` also offers to delete `rg-iot-tfstate`)
+- [ ] `terraform destroy` (review the plan first); this removes `rg-iot-poc` and everything in it, including device identities and DPS enrollments
 - [ ] Optionally delete the state RG afterwards: `az group delete -n rg-iot-tfstate --yes --no-wait` (state versions are lost with it)
+
+*Running cost while it stays up (approx.):* IoT Hub S1 ~0.80 EUR/day, Event Hubs Basic ~0.35 EUR/day, DPS/Functions/Log Analytics/alerts a few cents/day at PoC volume. Destroy it once the demo is over.
 
 ## Proposed layout
 
