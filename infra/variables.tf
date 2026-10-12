@@ -21,3 +21,9 @@ variable "iothub_sku" {
   type        = string
   default     = "F1"
 }
+
+variable "telemetry_storage_account_name" {
+  description = "Storage account for routed telemetry (cold path), globally unique, 3-24 lowercase alphanumerics."
+  type        = string
+  default     = "stiotpoc121026"
+}

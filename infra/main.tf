@@ -9,6 +9,11 @@ resource "azurerm_iothub" "hub" {
   location            = azurerm_resource_group.poc.location
   min_tls_version     = "1.2"
 
+  # Used to authenticate to custom routing endpoints (no keys in endpoint config).
+  identity {
+    type = "SystemAssigned"
+  }
+
   sku {
     name     = var.iothub_sku
     capacity = 1
@@ -19,7 +24,7 @@ resource "azurerm_iothub" "hub" {
   event_hub_retention_in_days = 1
 
   # Messages that match no route go to the built-in endpoint.
-  # Custom endpoints and routes are declared as separate azurerm_iothub_* resources (Step 4+).
+  # Custom endpoints and routes are declared as separate azurerm_iothub_* resources (routing.tf).
   fallback_route {
     source         = "DeviceMessages"
     condition      = "true"
