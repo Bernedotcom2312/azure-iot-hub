@@ -30,6 +30,60 @@ Terraform (local CLI) --state--> Blob Storage (versioning + soft delete + lease 
 
 Built-in endpoint is Event Hub compatible: anything that reads Event Hubs can read telemetry.
 
+## Flows explained
+
+### Data flow: from device to alert
+
+The device sends measurements to IoT Hub, which sorts them with routes. **Cold path:** everything is stored for later analysis. **Hot path:** only temperatures above 30 °C trigger the Function, which logs an alert. The dotted arrow is the reverse direction: the cloud sending commands to the device.
+
+```mermaid
+flowchart LR
+    D["Simulated device<br/>(sends temperature)"]
+    H["IoT Hub<br/>(entry point)"]
+    R{"Routes<br/>(filters)"}
+    S[("Blob Storage<br/>cold path: everything is kept")]
+    E["Event Hub<br/>hot path: temp > 30 °C"]
+    F["Azure Function<br/>temperature_alert"]
+    A["App Insights<br/>ALERT log"]
+
+    D -->|"telemetry"| H
+    H --> R
+    R -->|"all data"| S
+    R -->|"temperature > 30"| E
+    E -->|"triggers"| F
+    F -->|"writes a log"| A
+
+    H -.->|"C2D: direct methods<br/>and twin (commands)"| D
+```
+
+### Enrollment strategy (DPS)
+
+On first boot the device contacts DPS, which finds the matching enrollment. **Individual:** one rule for one device. **Group:** one rule for a whole fleet, each device derives its own key from the group key. Either way, DPS picks the hub, creates the identity and applies the initial twin; the device then talks to the hub directly.
+
+```mermaid
+flowchart TD
+    D["Device on first boot<br/>(knows the ID scope + its key)"]
+    P{"DPS<br/>Device Provisioning Service"}
+    EN{"Which enrollment?"}
+    I["Individual<br/>sim-device-02<br/>1 enrollment = 1 device"]
+    G["Group<br/>sim-fleet<br/>1 enrollment = N devices"]
+    K["Device key = HMAC-SHA256<br/>(group key, registration id)"]
+    A["Hashed allocation<br/>picks the hub"]
+    H["IoT Hub<br/>identity created + initial twin<br/>sendInterval=10, tag fleet"]
+    C["Device connects<br/>directly to the hub"]
+
+    D -->|"1. request"| P
+    P --> EN
+    EN --> I
+    EN --> G
+    G --> K
+    I --> A
+    K --> A
+    A -->|"2. assigns"| H
+    H -->|"3. returns hub + device id"| C
+    C -.->|"DPS is no longer used"| H
+```
+
 ## Plan
 
 Each step: **What** we do, **Why** it matters. Check the box when done.
