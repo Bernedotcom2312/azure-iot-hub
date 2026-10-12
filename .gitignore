@@ -10,3 +10,4 @@ __pycache__/
 *.tfvars
 *.tfplan
 tfplan
+local.settings.json

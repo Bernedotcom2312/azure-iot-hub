@@ -17,3 +17,12 @@ output "telemetry_storage_account_name" {
 output "telemetry_container_name" {
   value = azurerm_storage_container.telemetry.name
 }
+
+output "function_app_name" {
+  value = azurerm_function_app_flex_consumption.alerts.name
+}
+
+output "log_analytics_workspace_id" {
+  description = "Workspace (customer) id, used by `az monitor log-analytics query -w`."
+  value       = azurerm_log_analytics_workspace.poc.workspace_id
+}

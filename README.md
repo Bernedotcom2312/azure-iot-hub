@@ -77,8 +77,11 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 *Why:* the built-in endpoint retains data only 1-7 days. Routing is how you persist and fan out data without writing code.
 
 ### Step 5 - Hot path (alerting, Terraform)
-- [ ] `azurerm_eventhub_namespace` + `azurerm_eventhub`, `azurerm_iothub_endpoint_eventhub`, and a second route (`temperature > 30`)
-- [ ] Consume with an Azure Function (`azurerm_linux_function_app`, code in `functions/`) or Stream Analytics that logs/alerts
+- [x] Hub moved from F1 to **S1**: F1 allows a single custom endpoint (Blob already uses it) and cannot be upgraded, so the hub was recreated (`terraform apply -replace=...`) and `sim-device-01` re-registered
+- [x] `azurerm_eventhub_namespace` (Basic, local auth disabled) + `azurerm_eventhub`, `azurerm_iothub_endpoint_eventhub` (identity-based, `Azure Event Hubs Data Sender`), and a second route `$body.temperature > 30` (`infra/hot_path.tf`)
+- [x] Consume with a Python Azure Function on **Flex Consumption** (`azurerm_function_app_flex_consumption`, code in `functions/`), identity-based connections only (user-assigned identity, `Azure Event Hubs Data Receiver` + `Storage Blob Data Owner`); logs go to workspace-based Application Insights (`infra/monitoring.tf`)
+- [x] Deploy the code with `scripts/deploy-function.sh` (zip deploy, remote build), then check alerts:
+  `az monitor log-analytics query -w $(terraform -chdir=infra output -raw log_analytics_workspace_id) --analytics-query "AppTraces | where Message startswith 'ALERT' | take 10" -o table`
 
 *Why:* shows the classic Lambda split: cold path (storage/analytics) vs hot path (near real-time reaction).
 
@@ -122,7 +125,7 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 ├── CLAUDE.md
 ├── pyproject.toml # uv project (+ uv.lock)
 ├── device/        # simulator + provisioning client
-├── functions/     # hot-path consumer
+├── functions/     # hot-path consumer (Azure Function, deployed by scripts/deploy-function.sh)
 ├── infra/         # Terraform (backend.tf, providers.tf, main.tf, ...)
 └── scripts/       # bootstrap-tfstate.sh + az helpers for data-plane objects
 ```
@@ -135,3 +138,8 @@ Add findings, gotchas and cost observations here as the PoC progresses.
 - **RBAC propagation:** creating an identity-based endpoint right after its role assignment can fail with `IH400117 ... not authorized`; wait a few minutes and re-apply.
 - **Endpoint encoding is immutable:** JSON vs Avro is chosen at endpoint creation. JSON requires the device to set `contentType=application/json` and `contentEncoding=utf-8`, otherwise the body is stored base64-encoded.
 - **Blob latency:** blobs are written per partition every `batch_frequency_in_seconds` (min 60 s) or when the chunk size is reached, so expect about a minute of delay.
+- **F1 is a dead end for routing:** the free hub accepts only one custom endpoint and cannot be upgraded to a paid tier; moving to S1 means deleting and recreating the hub (device identities are lost, connection strings change).
+- **Body-based routing:** `$body.temperature > 30` only works because the device sets `contentType=application/json` + `contentEncoding=utf-8`; otherwise the hub sees an opaque body and the condition is false.
+- **Flex Consumption + identity-only storage (azurerm 4.x):** the provider always injects a key-based `AzureWebJobsStorage` app setting (empty key when shared keys are disabled), which overrides the identity-based settings and the host fails to start. `terraform_data.functions_fix_storage_setting` deletes it and re-syncs triggers after each change. Also use `AzureWebJobsStorage__blobServiceUri`, not `__accountName`: the Event Hubs checkpoint store rejects the latter. Its `zip_deploy_file` also failed (404), hence the separate deploy script.
+- **Scale to zero needs synced triggers:** a Flex app only wakes up for triggers registered with the scale controller; if trigger sync fails at deploy time, events pile up silently in Event Hubs.
+- **Python Functions bindings:** annotate batches with `typing.List[func.EventHubEvent]`; the worker rejects `list[...]` and indexes 0 functions.
