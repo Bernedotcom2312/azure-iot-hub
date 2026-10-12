@@ -35,3 +35,13 @@ output "dps_id_scope" {
   description = "Not a secret: identifies the DPS instance to devices (they connect to global.azure-devices-provisioning.net)."
   value       = azurerm_iothub_dps.poc.id_scope
 }
+
+output "device_ca_cert_pem" {
+  value = tls_self_signed_cert.device_ca.cert_pem
+}
+
+output "device_ca_private_key_pem" {
+  description = "Read only by scripts/issue-device-cert.sh to sign device CSRs."
+  value       = tls_private_key.device_ca.private_key_pem
+  sensitive   = true
+}

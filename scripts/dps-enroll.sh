@@ -21,22 +21,22 @@ set_env() {
   mv .env.tmp .env
 }
 
-if ! az iot dps enrollment show --dps-name "$DPS" -g "$RG" --enrollment-id "$INDIVIDUAL_ID" -o none 2>/dev/null; then
-  az iot dps enrollment create --dps-name "$DPS" -g "$RG" --enrollment-id "$INDIVIDUAL_ID" \
+if ! az iot dps enrollment show --dps-name "$DPS" -g "$RG" --enrollment-id "$INDIVIDUAL_ID" --auth-type login -o none 2>/dev/null; then
+  az iot dps enrollment create --dps-name "$DPS" -g "$RG" --enrollment-id "$INDIVIDUAL_ID" --auth-type login \
     --attestation-type symmetrickey --iot-hubs "$HUB_HOST" --allocation-policy hashed -o none
 fi
-INDIVIDUAL_KEY=$(az iot dps enrollment show --dps-name "$DPS" -g "$RG" --enrollment-id "$INDIVIDUAL_ID" \
+INDIVIDUAL_KEY=$(az iot dps enrollment show --dps-name "$DPS" -g "$RG" --enrollment-id "$INDIVIDUAL_ID" --auth-type login \
   --show-keys --query attestation.symmetricKey.primaryKey -o tsv)
 
 # The initial twin is applied to every device provisioned through the group: config from day one.
-if ! az iot dps enrollment-group show --dps-name "$DPS" -g "$RG" --enrollment-id "$GROUP_ID" -o none 2>/dev/null; then
+if ! az iot dps enrollment-group show --dps-name "$DPS" -g "$RG" --enrollment-id "$GROUP_ID" --auth-type login -o none 2>/dev/null; then
   # No certificate given: the group uses symmetric-key attestation.
-  az iot dps enrollment-group create --dps-name "$DPS" -g "$RG" --enrollment-id "$GROUP_ID" \
+  az iot dps enrollment-group create --dps-name "$DPS" -g "$RG" --enrollment-id "$GROUP_ID" --auth-type login \
     --iot-hubs "$HUB_HOST" --allocation-policy hashed \
     --initial-twin-tags '{"fleet": "sim-fleet"}' \
     --initial-twin-properties '{"sendInterval": 10}' -o none
 fi
-GROUP_KEY=$(az iot dps enrollment-group show --dps-name "$DPS" -g "$RG" --enrollment-id "$GROUP_ID" \
+GROUP_KEY=$(az iot dps enrollment-group show --dps-name "$DPS" -g "$RG" --enrollment-id "$GROUP_ID" --auth-type login \
   --show-keys --query attestation.symmetricKey.primaryKey -o tsv)
 
 set_env DPS_ID_SCOPE "$ID_SCOPE"

@@ -101,9 +101,18 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 *Why:* in production you never pre-register thousands of devices manually; DPS assigns them to a hub on first boot (and can load-balance across hubs).
 
 ### Step 8 - Security hardening (Terraform)
-- [ ] Move from SAS keys to **X.509** certificates for the device (self-signed CA for the PoC)
-- [ ] Use **Entra ID + RBAC** (`azurerm_role_assignment`, `IoT Hub Data Contributor`) for service-side access instead of shared access policies
-- [ ] Review and set in Terraform: disable local auth where possible, TLS 1.2 min, private endpoint, Defender for IoT
+- [x] Move from SAS keys to **X.509** certificates for the device: CA created by Terraform (`tls` provider) and uploaded as verified (`azurerm_iothub_certificate`, `infra/security.tf`); `scripts/issue-device-cert.sh` generates the device key + CSR, signs it, registers `sim-device-x509` with `x509_ca` auth; run with `AUTH_MODE=x509 X509_DEVICE_ID=sim-device-x509 uv run device/simulator.py`
+- [x] Use **Entra ID + RBAC** for service-side access: `IoT Hub Data Contributor` and `Device Provisioning Service Data Contributor` for the operator; all scripts use `az iot ... --auth-type login`
+- [x] Review (decisions below)
+
+| Control | Status | Why |
+|---|---|---|
+| TLS 1.2 minimum | Done | Hub, Event Hubs, both storage accounts |
+| Local (key) auth off | Done for Event Hubs and Storage (Entra only, managed identities everywhere) | |
+| Hub local auth (`local_authentication_enabled = false`) | **Kept on** | DPS links to the hub with a shared access policy connection string (`dps-link`); turning it off breaks provisioning |
+| Device SAS keys | Kept for `sim-device-01/02` and the DPS group | X.509 shown on `sim-device-x509`; in production, prefer X.509 (or TPM) everywhere, with keys in a secure element |
+| Private endpoint + public access off | Not done | Simulated devices run on a laptop over the internet; in production: private endpoint for service-side traffic, IP filter or public access only for devices |
+| Microsoft Defender for IoT | Not enabled | Paid per device; worth it in production for security recommendations and anomaly alerts |
 
 *Why:* device identity and the service-side access path are the two main attack surfaces.
 
@@ -128,6 +137,7 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 ├── device/        # simulator + provisioning client
 ├── functions/     # hot-path consumer (Azure Function, deployed by scripts/deploy-function.sh)
 ├── infra/         # Terraform (backend.tf, providers.tf, main.tf, ...)
+├── certs/         # device certificates and keys (git-ignored)
 └── scripts/       # bootstrap-tfstate.sh + az helpers for data-plane objects
 ```
 
@@ -148,3 +158,5 @@ Add findings, gotchas and cost observations here as the PoC progresses.
 - **DPS is only used at first boot (or re-provisioning):** it returns the assigned hub + device id, then the device talks to the hub directly. The ID scope is not a secret; the attestation (key or certificate) is.
 - **Group enrollment = initial config for free:** the initial twin of `sim-fleet` (`sendInterval: 10`, tag `fleet`) is applied to every device it provisions, so the device starts with the right config without any extra call.
 - **`az iot dps enrollment-group create`** has no `--attestation-type`: omitting certificates means symmetric key; `--iot-hubs` requires `--allocation-policy`.
+- **X.509 CA auth:** the hub stores no device secret, only the CA certificate. Any device whose certificate chains to it and whose CN equals its device id can connect, but the device identity must still exist in the registry (or be created by DPS).
+- **DPS policy rights collapse:** DPS stores only `EnrollmentWrite` (it implies read and registration rights), so declaring the other flags in `azurerm_iothub_dps_shared_access_policy` causes a perpetual diff.

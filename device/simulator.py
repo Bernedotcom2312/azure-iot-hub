@@ -13,7 +13,7 @@ import os
 import random
 import threading
 
-from azure.iot.device import IoTHubDeviceClient, Message, MethodResponse, ProvisioningDeviceClient
+from azure.iot.device import X509, IoTHubDeviceClient, Message, MethodResponse, ProvisioningDeviceClient
 
 SEND_INTERVAL_DEFAULT_S = 5
 # Routing property: 'storage' matches the cold-path route; any other value only reaches the built-in endpoint.
@@ -144,11 +144,21 @@ def provision_via_dps() -> IoTHubDeviceClient:
     return IoTHubDeviceClient.create_from_symmetric_key(key, state.assigned_hub, state.device_id)
 
 
+def connect_with_x509() -> IoTHubDeviceClient:
+    """Certificate auth: the TLS handshake proves possession of the key; the hub checks the chain to its CA."""
+    device_id = os.environ["X509_DEVICE_ID"]
+    x509 = X509(cert_file=f"certs/{device_id}.pem", key_file=f"certs/{device_id}.key")
+    hostname = f"{os.environ['HUB']}.azure-devices.net"
+    return IoTHubDeviceClient.create_from_x509_certificate(x509=x509, hostname=hostname, device_id=device_id)
+
+
 def create_client() -> IoTHubDeviceClient:
-    """AUTH_MODE: connection_string (pre-registered device, Step 3) or dps (zero-touch, Step 7)."""
+    """AUTH_MODE: connection_string (SAS key, Step 3), dps (zero-touch, Step 7) or x509 (certificate, Step 8)."""
     mode = os.environ.get("AUTH_MODE", "connection_string")
     if mode == "dps":
         return provision_via_dps()
+    if mode == "x509":
+        return connect_with_x509()
     return IoTHubDeviceClient.create_from_connection_string(os.environ["DEVICE_CONNECTION_STRING"])
 
 

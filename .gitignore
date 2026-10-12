@@ -11,3 +11,4 @@ __pycache__/
 *.tfplan
 tfplan
 local.settings.json
+certs/

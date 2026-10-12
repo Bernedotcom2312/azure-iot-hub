@@ -34,8 +34,7 @@ resource "azurerm_iothub_dps_shared_access_policy" "enrollment_admin" {
   name                = "enrollment-admin"
   resource_group_name = azurerm_resource_group.poc.name
   iothub_dps_name     = azurerm_iothub_dps.poc.name
-  enrollment_read     = true
-  enrollment_write    = true
-  registration_read   = true
-  registration_write  = true
+  # DPS stores only EnrollmentWrite (it implies the read/registration rights); declaring
+  # the others makes Terraform report a perpetual diff.
+  enrollment_write = true
 }
