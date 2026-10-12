@@ -69,9 +69,10 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 *Why:* each device authenticates individually (SAS key), so revoking one never impacts the others. This is the core IoT flow - device -> hub over MQTT/TLS (port 8883). Note the system properties and custom message properties (used later for routing).
 
 ### Step 4 - Message routing (cold path, Terraform)
-- [ ] `azurerm_storage_account` + `azurerm_storage_container` for telemetry
-- [ ] `azurerm_iothub_endpoint_storage_container`, `azurerm_iothub_route` filtering on a message property (e.g. `level = 'storage'`), `azurerm_iothub_fallback_route` as needed
-- [ ] Update the simulator to set the `level` property; verify blobs (Avro/JSON) land in the container
+- [x] `azurerm_storage_account` + `azurerm_storage_container` for telemetry (`infra/routing.tf`; shared keys disabled, Entra ID only)
+- [x] `azurerm_iothub_endpoint_storage_container` (identity-based auth via the hub's system-assigned identity + `Storage Blob Data Contributor`, JSON encoding, 60 s batches), `azurerm_iothub_route` on `level = 'storage'`, plus a `true` route to the built-in `events` endpoint
+- [x] Simulator sets the `level` property (`MESSAGE_LEVEL` env var, default `storage`); verify blobs land in the container:
+  `az storage blob list --account-name stiotpoc121026 -c telemetry --auth-mode login -o table`
 
 *Why:* the built-in endpoint retains data only 1-7 days. Routing is how you persist and fan out data without writing code.
 
@@ -128,3 +129,9 @@ Each step: **What** we do, **Why** it matters. Check the box when done.
 
 ## Learning notes
 Add findings, gotchas and cost observations here as the PoC progresses.
+
+- **Routing skips the fallback:** a message that matches *any* route no longer goes to the fallback route. Once `level = 'storage'` is routed to Blob, `az iot hub monitor-events` goes silent unless an explicit route to `events` exists (hence `telemetry-to-builtin`).
+- **Managed identity on an existing hub:** the hub's `principal_id` is unknown until the identity exists, so the first rollout needs two applies: `terraform apply -target=azurerm_iothub.hub`, then a full apply.
+- **RBAC propagation:** creating an identity-based endpoint right after its role assignment can fail with `IH400117 ... not authorized`; wait a few minutes and re-apply.
+- **Endpoint encoding is immutable:** JSON vs Avro is chosen at endpoint creation. JSON requires the device to set `contentType=application/json` and `contentEncoding=utf-8`, otherwise the body is stored base64-encoded.
+- **Blob latency:** blobs are written per partition every `batch_frequency_in_seconds` (min 60 s) or when the chunk size is reached, so expect about a minute of delay.
